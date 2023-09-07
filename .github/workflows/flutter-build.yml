@@ -96,6 +96,7 @@ jobs:
           VCPKG_ROOT: C:\rustdesk_thirdpary_lib\vcpkg
         run: python3 .\build.py --portable --hwcodec --flutter --feature IddDriver
 
+       - name: Sign rustdesk files
         uses: GermanBluefox/code-sign-action@v7
         if: env.UPLOAD_ARTIFACT == 'true'
         with:
