@@ -101,9 +101,6 @@ class ToolbarState {
 class _ToolbarTheme {
   static const Color blueColor = MyTheme.button;
   static const Color hoverBlueColor = MyTheme.accent;
-  static Color inactiveColor =  Colors.grey[800]!;
-  static Color hoverInactiveColor = Colors.grey[850]!;
-
   static const Color redColor = Colors.redAccent;
   static const Color hoverRedColor = Colors.red;
   // kMinInteractiveDimension
@@ -546,9 +543,9 @@ class _PinMenu extends StatelessWidget {
         assetName: state.pin ? "assets/pinned.svg" : "assets/unpinned.svg",
         tooltip: state.pin ? 'Unpin Toolbar' : 'Pin Toolbar',
         onPressed: state.switchPin,
-        color: state.pin ? _ToolbarTheme.blueColor : _ToolbarTheme.inactiveColor,
+        color: state.pin ? _ToolbarTheme.blueColor : Colors.grey[800]!,
         hoverColor:
-            state.pin ? _ToolbarTheme.hoverBlueColor : _ToolbarTheme.hoverInactiveColor,
+            state.pin ? _ToolbarTheme.hoverBlueColor : Colors.grey[850]!,
       ),
     );
   }
@@ -561,15 +558,13 @@ class _MobileActionMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!ffi.ffiModel.isPeerAndroid) return Offstage();
-    return Obx(()=>_IconMenuButton(
+    return _IconMenuButton(
       assetName: 'assets/actions_mobile.svg',
       tooltip: 'Mobile Actions',
       onPressed: () => ffi.dialogManager.toggleMobileActionsOverlay(ffi: ffi),
-      color: ffi.dialogManager.mobileActionsOverlayVisible.isTrue
-          ? _ToolbarTheme.blueColor : _ToolbarTheme.inactiveColor,
-      hoverColor: ffi.dialogManager.mobileActionsOverlayVisible.isTrue
-          ? _ToolbarTheme.hoverBlueColor : _ToolbarTheme.hoverInactiveColor,
-    ));
+      color: _ToolbarTheme.blueColor,
+      hoverColor: _ToolbarTheme.hoverBlueColor,
+    );
   }
 }
 
@@ -776,7 +771,7 @@ class ScreenAdjustor {
   updateScreen() async {
     final v = await rustDeskWinManager.call(
         WindowType.Main, kWindowGetWindowInfo, '');
-    final String valueStr = v.result;
+    final String valueStr = v;
     if (valueStr.isEmpty) {
       _screen = null;
     } else {

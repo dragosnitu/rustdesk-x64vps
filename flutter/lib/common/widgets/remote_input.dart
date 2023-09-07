@@ -6,7 +6,6 @@ import 'package:flutter/gestures.dart';
 
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/common.dart';
-import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 
@@ -264,9 +263,9 @@ class _RawTouchGestureDetectorRegionState
       if (scale != 0) {
         bind.sessionSendPointer(
             sessionId: sessionId,
-            msg: json.encode(
-                PointerEventToRust(kPointerEventKindTouch, 'scale', scale)
-                    .toJson()));
+            msg: json.encode({
+              'touch': {'scale': scale}
+            }));
       }
     } else {
       // mobile
@@ -284,8 +283,9 @@ class _RawTouchGestureDetectorRegionState
     if (isDesktop) {
       bind.sessionSendPointer(
           sessionId: sessionId,
-          msg: json.encode(
-              PointerEventToRust(kPointerEventKindTouch, 'scale', 0).toJson()));
+          msg: json.encode({
+            'touch': {'scale': 0}
+          }));
     } else {
       // mobile
       _scale = 1;

@@ -614,7 +614,6 @@ class OverlayDialogManager {
   int _tagCount = 0;
 
   OverlayEntry? _mobileActionsOverlayEntry;
-  RxBool mobileActionsOverlayVisible = false.obs;
 
   void setOverlayState(OverlayKeyState overlayKeyState) {
     _overlayKeyState = overlayKeyState;
@@ -781,14 +780,12 @@ class OverlayDialogManager {
     });
     overlayState.insert(overlay);
     _mobileActionsOverlayEntry = overlay;
-    mobileActionsOverlayVisible.value = true;
   }
 
   void hideMobileActionsOverlay() {
     if (_mobileActionsOverlayEntry != null) {
       _mobileActionsOverlayEntry!.remove();
       _mobileActionsOverlayEntry = null;
-      mobileActionsOverlayVisible.value = false;
       return;
     }
   }
@@ -1080,7 +1077,7 @@ Color str2color(String str, [alpha = 0xFF]) {
   return Color((hash & 0xFF7FFF) | (alpha << 24));
 }
 
-Color str2color2(String str, {List<int> existing = const []}) {
+Color str2color2(String str, [alpha = 0xFF]) {
   Map<String, Color> colorMap = {
     "red": Colors.red,
     "green": Colors.green,
@@ -1097,10 +1094,10 @@ Color str2color2(String str, {List<int> existing = const []}) {
   };
   final color = colorMap[str.toLowerCase()];
   if (color != null) {
-    return color.withAlpha(0xFF);
+    return color.withAlpha(alpha);
   }
   if (str.toLowerCase() == 'yellow') {
-    return Colors.yellow.withAlpha(0xFF);
+    return Colors.yellow.withAlpha(alpha);
   }
   var hash = 0;
   for (var i = 0; i < str.length; i++) {
@@ -1108,15 +1105,7 @@ Color str2color2(String str, {List<int> existing = const []}) {
   }
   List<Color> colorList = colorMap.values.toList();
   hash = hash % colorList.length;
-  var result = colorList[hash].withAlpha(0xFF);
-  if (existing.contains(result.value)) {
-    Color? notUsed =
-        colorList.firstWhereOrNull((e) => !existing.contains(e.value));
-    if (notUsed != null) {
-      result = notUsed;
-    }
-  }
-  return result;
+  return colorList[hash].withAlpha(alpha);
 }
 
 const K = 1024;
@@ -1702,10 +1691,7 @@ Future<bool> restoreWindowPosition(WindowType type,
       }
       if (lpos.isMaximized == true) {
         await restoreFrame();
-        // An duration is needed to avoid the window being restored after maximized.
-        Future.delayed(Duration(milliseconds: 300), () async {
-          await wc.maximize();
-        });
+        await wc.maximize();
       } else {
         await restoreFrame();
       }

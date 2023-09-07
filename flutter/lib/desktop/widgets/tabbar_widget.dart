@@ -77,7 +77,7 @@ CancelFunc showRightMenu(ToastBuilder builder,
     targetContext: context,
     verticalOffset: 0,
     horizontalOffset: 0,
-    duration: Duration(seconds: 300),
+    duration: Duration(seconds: 4),
     animationDuration: Duration(milliseconds: 0),
     animationReverseDuration: Duration(milliseconds: 0),
     preferDirection: PreferDirection.rightTop,
@@ -440,6 +440,7 @@ class DesktopTab extends StatelessWidget {
           tabType: tabType,
           state: state,
           tail: tail,
+          isMaximized: stateGlobal.isMaximized,
           showMinimize: showMinimize,
           showMaximize: showMaximize,
           showClose: showClose,
@@ -454,6 +455,7 @@ class WindowActionPanel extends StatefulWidget {
   final bool isMainWindow;
   final DesktopTabType tabType;
   final Rx<DesktopTabState> state;
+  final RxBool isMaximized;
 
   final bool showMinimize;
   final bool showMaximize;
@@ -466,6 +468,7 @@ class WindowActionPanel extends StatefulWidget {
       required this.isMainWindow,
       required this.tabType,
       required this.state,
+      required this.isMaximized,
       this.tail,
       this.showMinimize = true,
       this.showMaximize = true,
@@ -492,18 +495,18 @@ class WindowActionPanelState extends State<WindowActionPanel>
     Future.delayed(Duration(milliseconds: 500), () {
       if (widget.isMainWindow) {
         windowManager.isMaximized().then((maximized) {
-          if (stateGlobal.isMaximized.value != maximized) {
+          if (widget.isMaximized.value != maximized) {
             WidgetsBinding.instance.addPostFrameCallback(
-                (_) => setState(() => stateGlobal.setMaximized(maximized)));
+                (_) => setState(() => widget.isMaximized.value = maximized));
           }
         });
       } else {
         final wc = WindowController.fromWindowId(kWindowId!);
         wc.isMaximized().then((maximized) {
           debugPrint("isMaximized $maximized");
-          if (stateGlobal.isMaximized.value != maximized) {
+          if (widget.isMaximized.value != maximized) {
             WidgetsBinding.instance.addPostFrameCallback(
-                (_) => setState(() => stateGlobal.setMaximized(maximized)));
+                (_) => setState(() => widget.isMaximized.value = maximized));
           }
         });
       }
@@ -532,6 +535,10 @@ class WindowActionPanelState extends State<WindowActionPanel>
 
   @override
   void onWindowMaximize() {
+    // catch maximize from system
+    if (!widget.isMaximized.value) {
+      widget.isMaximized.value = true;
+    }
     stateGlobal.setMinimized(false);
     _setMaximized(true);
     super.onWindowMaximize();
@@ -539,6 +546,10 @@ class WindowActionPanelState extends State<WindowActionPanel>
 
   @override
   void onWindowUnmaximize() {
+    // catch unmaximize from system
+    if (widget.isMaximized.value) {
+      widget.isMaximized.value = false;
+    }
     stateGlobal.setMinimized(false);
     _setMaximized(false);
     super.onWindowUnmaximize();
@@ -621,10 +632,9 @@ class WindowActionPanelState extends State<WindowActionPanel>
               Offstage(
                   offstage: !widget.showMaximize || Platform.isMacOS,
                   child: Obx(() => ActionIcon(
-                        message: stateGlobal.isMaximized.isTrue
-                            ? 'Restore'
-                            : 'Maximize',
-                        icon: stateGlobal.isMaximized.isTrue
+                        message:
+                            widget.isMaximized.value ? 'Restore' : 'Maximize',
+                        icon: widget.isMaximized.value
                             ? IconFont.restore
                             : IconFont.max,
                         onTap: _toggleMaximize,
@@ -661,8 +671,10 @@ class WindowActionPanelState extends State<WindowActionPanel>
 
   void _toggleMaximize() {
     toggleMaximize(widget.isMainWindow).then((maximize) {
-      // update state for sub window, wc.unmaximize/maximize() will not invoke onWindowMaximize/Unmaximize
-      stateGlobal.setMaximized(maximize);
+      if (widget.isMaximized.value != maximize) {
+        // update state for sub window, wc.unmaximize/maximize() will not invoke onWindowMaximize/Unmaximize
+        widget.isMaximized.value = maximize;
+      }
     });
   }
 }

@@ -35,7 +35,6 @@ class RemotePage extends StatefulWidget {
     Key? key,
     required this.id,
     required this.sessionId,
-    required this.tabWindowId,
     required this.password,
     required this.toolbarState,
     required this.tabController,
@@ -45,7 +44,6 @@ class RemotePage extends StatefulWidget {
 
   final String id;
   final SessionID? sessionId;
-  final int? tabWindowId;
   final String? password;
   final ToolbarState toolbarState;
   final String? switchUuid;
@@ -108,7 +106,6 @@ class _RemotePageState extends State<RemotePage>
       password: widget.password,
       switchUuid: widget.switchUuid,
       forceRelay: widget.forceRelay,
-      tabWindowId: widget.tabWindowId,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
@@ -228,70 +225,49 @@ class _RemotePageState extends State<RemotePage>
     removeSharedStates(widget.id);
   }
 
-  Widget emptyOverlay() => BlockableOverlay(
-        /// the Overlay key will be set with _blockableOverlayState in BlockableOverlay
-        /// see override build() in [BlockableOverlay]
-        state: _blockableOverlayState,
-        underlying: Container(
-          color: Colors.transparent,
-        ),
-      );
-
   Widget buildBody(BuildContext context) {
-    remoteToolbar(BuildContext context) => RemoteToolbar(
-          id: widget.id,
-          ffi: _ffi,
-          state: widget.toolbarState,
-          onEnterOrLeaveImageSetter: (func) =>
-              _onEnterOrLeaveImage4Toolbar = func,
-          onEnterOrLeaveImageCleaner: () => _onEnterOrLeaveImage4Toolbar = null,
-        );
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
-      body: Stack(
-        children: [
-          Container(
-              color: Colors.black,
-              child: RawKeyFocusScope(
-                  focusNode: _rawKeyFocusNode,
-                  onFocusChange: (bool imageFocused) {
-                    debugPrint(
-                        "onFocusChange(window active:${!_isWindowBlur}) $imageFocused");
-                    // See [onWindowBlur].
-                    if (Platform.isWindows) {
-                      if (_isWindowBlur) {
-                        imageFocused = false;
-                        Future.delayed(Duration.zero, () {
-                          _rawKeyFocusNode.unfocus();
-                        });
-                      }
-                      if (imageFocused) {
-                        _ffi.inputModel.enterOrLeave(true);
-                      } else {
-                        _ffi.inputModel.enterOrLeave(false);
-                      }
+
+      /// the Overlay key will be set with _blockableOverlayState in BlockableOverlay
+      /// see override build() in [BlockableOverlay]
+      body: BlockableOverlay(
+        state: _blockableOverlayState,
+        underlying: Container(
+            color: Colors.black,
+            child: RawKeyFocusScope(
+                focusNode: _rawKeyFocusNode,
+                onFocusChange: (bool imageFocused) {
+                  debugPrint(
+                      "onFocusChange(window active:${!_isWindowBlur}) $imageFocused");
+                  // See [onWindowBlur].
+                  if (Platform.isWindows) {
+                    if (_isWindowBlur) {
+                      imageFocused = false;
+                      Future.delayed(Duration.zero, () {
+                        _rawKeyFocusNode.unfocus();
+                      });
                     }
-                  },
-                  inputModel: _ffi.inputModel,
-                  child: getBodyForDesktop(context))),
-          Obx(() => Stack(
-                children: [
-                  _ffi.ffiModel.pi.isSet.isTrue &&
-                          _ffi.ffiModel.waitForFirstImage.isTrue
-                      ? emptyOverlay()
-                      : () {
-                          _ffi.ffiModel.tryShowAndroidActionsOverlay();
-                          return Offstage();
-                        }(),
-                  // Use Overlay to enable rebuild every time on menu button click.
-                  _ffi.ffiModel.pi.isSet.isTrue
-                      ? Overlay(initialEntries: [
-                          OverlayEntry(builder: remoteToolbar)
-                        ])
-                      : remoteToolbar(context),
-                  _ffi.ffiModel.pi.isSet.isFalse ? emptyOverlay() : Offstage(),
-                ],
-              )),
+                    if (imageFocused) {
+                      _ffi.inputModel.enterOrLeave(true);
+                    } else {
+                      _ffi.inputModel.enterOrLeave(false);
+                    }
+                  }
+                },
+                inputModel: _ffi.inputModel,
+                child: getBodyForDesktop(context))),
+        upperLayer: [
+          OverlayEntry(
+              builder: (context) => RemoteToolbar(
+                    id: widget.id,
+                    ffi: _ffi,
+                    state: widget.toolbarState,
+                    onEnterOrLeaveImageSetter: (func) =>
+                        _onEnterOrLeaveImage4Toolbar = func,
+                    onEnterOrLeaveImageCleaner: () =>
+                        _onEnterOrLeaveImage4Toolbar = null,
+                  ))
         ],
       ),
     );

@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Mutex, time::Duration};
 
 #[cfg(not(any(target_os = "ios")))]
 use crate::Connection;
@@ -20,7 +16,6 @@ const TIME_CONN: Duration = Duration::from_secs(3);
 #[cfg(not(any(target_os = "ios")))]
 lazy_static::lazy_static! {
     static ref SENDER : Mutex<broadcast::Sender<Vec<i32>>> = Mutex::new(start_hbbs_sync());
-    static ref PRO: Arc<Mutex<bool>> = Default::default();
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -59,7 +54,6 @@ async fn start_hbbs_sync_async() {
             _ = interval.tick() => {
                 let url = heartbeat_url();
                 if url.is_empty() {
-                    *PRO.lock().unwrap() = false;
                     continue;
                 }
                 if !Config::get_option("stop-service").is_empty() {
@@ -68,7 +62,6 @@ async fn start_hbbs_sync_async() {
                 let conns = Connection::alive_conns();
                 if info_uploaded.0 && url != info_uploaded.1 {
                     info_uploaded.0 = false;
-                    *PRO.lock().unwrap() = false;
                 }
                 if !info_uploaded.0 && info_uploaded.2.map(|x| x.elapsed() >= UPLOAD_SYSINFO_TIMEOUT).unwrap_or(true){
                     let mut v = crate::get_sysinfo();
@@ -80,7 +73,6 @@ async fn start_hbbs_sync_async() {
                             if x == "SYSINFO_UPDATED" {
                                 info_uploaded = (true, url.clone(), None);
                                 hbb_common::log::info!("sysinfo updated");
-                                *PRO.lock().unwrap() = true;
                             } else if x == "ID_NOT_FOUND" {
                                 info_uploaded.2 = None; // next heartbeat will upload sysinfo again
                             } else {
@@ -155,9 +147,4 @@ fn handle_config_options(config_options: HashMap<String, String>) {
         })
         .count();
     Config::set_options(options);
-}
-
-#[cfg(not(any(target_os = "ios")))]
-pub fn is_pro() -> bool {
-    PRO.lock().unwrap().clone()
 }

@@ -33,7 +33,6 @@ mod tw;
 mod ua;
 mod vn;
 mod lt;
-mod ar;
 
 pub const LANGS: &[(&str, &str)] = &[
     ("en", "English"),
@@ -69,7 +68,6 @@ pub const LANGS: &[(&str, &str)] = &[
     ("sl", "Slovenščina"),
     ("ro", "Română"),
     ("lt", "Lietuvių"),
-    ("ar", "العربية"),
 ];
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -134,7 +132,6 @@ pub fn translate_locale(name: String, locale: &str) -> String {
         "sl" => sl::T.deref(),
         "ro" => ro::T.deref(),
         "lt" => lt::T.deref(),
-        "ar" => ar::T.deref(),
         _ => en::T.deref(),
     };
     if let Some(v) = m.get(&name as &str) {

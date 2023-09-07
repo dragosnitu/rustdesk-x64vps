@@ -35,24 +35,6 @@ extension ToString on MouseButtons {
   }
 }
 
-class PointerEventToRust {
-  final String kind;
-  final String type;
-  final dynamic value;
-
-  PointerEventToRust(this.kind, this.type, this.value);
-
-  Map<String, dynamic> toJson() {
-    return {
-      'k': kind,
-      'v': {
-        't': type,
-        'v': value,
-      }
-    };
-  }
-}
-
 class InputModel {
   final WeakReference<FFI> parent;
   String keyboardMode = "legacy";
@@ -80,11 +62,11 @@ class InputModel {
   int _lastButtons = 0;
   Offset lastMousePos = Offset.zero;
 
+  get id => parent.target?.id ?? "";
+
   late final SessionID sessionId;
 
   bool get keyboardPerm => parent.target!.ffiModel.keyboard;
-  String get id => parent.target?.id ?? '';
-  String? get peerPlatform => parent.target?.ffiModel.pi.platform;
 
   InputModel(this.parent) {
     sessionId = parent.target!.sessionId;
@@ -241,8 +223,14 @@ class InputModel {
         command: command);
   }
 
-  Map<String, dynamic> _getMouseEvent(PointerEvent evt, String type) {
+  Map<String, dynamic> getEvent(PointerEvent evt, String type) {
     final Map<String, dynamic> out = {};
+    out['x'] = evt.position.dx;
+    out['y'] = evt.position.dy;
+    if (alt) out['alt'] = 'true';
+    if (shift) out['shift'] = 'true';
+    if (ctrl) out['ctrl'] = 'true';
+    if (command) out['command'] = 'true';
 
     // Check update event type and set buttons to be sent.
     int buttons = _lastButtons;
@@ -272,6 +260,7 @@ class InputModel {
 
     out['buttons'] = buttons;
     out['type'] = type;
+
     return out;
   }
 
@@ -303,7 +292,7 @@ class InputModel {
   }
 
   /// Modify the given modifier map [evt] based on current modifier key status.
-  Map<String, dynamic> modify(Map<String, dynamic> evt) {
+  Map<String, String> modify(Map<String, String> evt) {
     if (ctrl) evt['ctrl'] = 'true';
     if (shift) evt['shift'] = 'true';
     if (alt) evt['alt'] = 'true';
@@ -345,33 +334,27 @@ class InputModel {
       isPhysicalMouse.value = true;
     }
     if (isPhysicalMouse.value) {
-      handleMouse(_getMouseEvent(e, _kMouseEventMove), e.position);
+      handleMouse(getEvent(e, _kMouseEventMove));
     }
   }
 
   void onPointerPanZoomStart(PointerPanZoomStartEvent e) {
     _lastScale = 1.0;
     _stopFling = true;
-
-    if (peerPlatform == kPeerPlatformAndroid) {
-      handlePointerEvent('touch', 'pan_start', e.position);
-    }
   }
 
   // https://docs.flutter.dev/release/breaking-changes/trackpad-gestures
   void onPointerPanZoomUpdate(PointerPanZoomUpdateEvent e) {
-    if (peerPlatform != kPeerPlatformAndroid) {
-      final scale = ((e.scale - _lastScale) * 1000).toInt();
-      _lastScale = e.scale;
+    final scale = ((e.scale - _lastScale) * 1000).toInt();
+    _lastScale = e.scale;
 
-      if (scale != 0) {
-        bind.sessionSendPointer(
-            sessionId: sessionId,
-            msg: json.encode(
-                PointerEventToRust(kPointerEventKindTouch, 'scale', scale)
-                    .toJson()));
-        return;
-      }
+    if (scale != 0) {
+      bind.sessionSendPointer(
+          sessionId: sessionId,
+          msg: json.encode({
+            'touch': {'scale': scale}
+          }));
+      return;
     }
 
     final delta = e.panDelta;
@@ -379,7 +362,7 @@ class InputModel {
 
     var x = delta.dx.toInt();
     var y = delta.dy.toInt();
-    if (peerPlatform == kPeerPlatformLinux) {
+    if (parent.target?.ffiModel.pi.platform == kPeerPlatformLinux) {
       _trackpadScrollUnsent += (delta * _trackpadSpeed);
       x = _trackpadScrollUnsent.dx.truncate();
       y = _trackpadScrollUnsent.dy.truncate();
@@ -395,13 +378,9 @@ class InputModel {
       }
     }
     if (x != 0 || y != 0) {
-      if (peerPlatform == kPeerPlatformAndroid) {
-        handlePointerEvent('touch', 'pan_update', Offset(x.toDouble(), y.toDouble()));
-      } else {
-        bind.sessionSendMouse(
-            sessionId: sessionId,
-            msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
-      }
+      bind.sessionSendMouse(
+          sessionId: sessionId,
+          msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
     }
   }
 
@@ -457,15 +436,11 @@ class InputModel {
   }
 
   void onPointerPanZoomEnd(PointerPanZoomEndEvent e) {
-    if (peerPlatform == kPeerPlatformAndroid) {
-      handlePointerEvent('touch', 'pan_end', e.position);
-      return;
-    }
-
     bind.sessionSendPointer(
         sessionId: sessionId,
-        msg: json.encode(
-            PointerEventToRust(kPointerEventKindTouch, 'scale', 0).toJson()));
+        msg: json.encode({
+          'touch': {'scale': 0}
+        }));
 
     waitLastFlingDone();
     _stopFling = false;
@@ -490,21 +465,21 @@ class InputModel {
       }
     }
     if (isPhysicalMouse.value) {
-      handleMouse(_getMouseEvent(e, _kMouseEventDown), e.position);
+      handleMouse(getEvent(e, _kMouseEventDown));
     }
   }
 
   void onPointUpImage(PointerUpEvent e) {
     if (e.kind != ui.PointerDeviceKind.mouse) return;
     if (isPhysicalMouse.value) {
-      handleMouse(_getMouseEvent(e, _kMouseEventUp), e.position);
+      handleMouse(getEvent(e, _kMouseEventUp));
     }
   }
 
   void onPointMoveImage(PointerMoveEvent e) {
     if (e.kind != ui.PointerDeviceKind.mouse) return;
     if (isPhysicalMouse.value) {
-      handleMouse(_getMouseEvent(e, _kMouseEventMove), e.position);
+      handleMouse(getEvent(e, _kMouseEventMove));
     }
   }
 
@@ -529,16 +504,19 @@ class InputModel {
   }
 
   void refreshMousePos() => handleMouse({
+        'x': lastMousePos.dx,
+        'y': lastMousePos.dy,
         'buttons': 0,
         'type': _kMouseEventMove,
-      }, lastMousePos);
+      });
 
   void tryMoveEdgeOnExit(Offset pos) => handleMouse(
         {
+          'x': pos.dx,
+          'y': pos.dy,
           'buttons': 0,
           'type': _kMouseEventMove,
         },
-        pos,
         onExit: true,
       );
 
@@ -572,49 +550,17 @@ class InputModel {
     return Offset(x, y);
   }
 
-  void handlePointerEvent(String kind, String type, Offset offset) {
-    double x = offset.dx;
-    double y = offset.dy;
-    if (_checkPeerControlProtected(x, y)) {
-      return;
-    }
-    // Only touch events are handled for now. So we can just ignore buttons.
-    // to-do: handle mouse events
-
-    late final dynamic evtValue;
-    if (type == 'pan_update') {
-      evtValue = {
-        'x': x.toInt(),
-        'y': y.toInt(),
-      };
-    } else {
-      final isMoveTypes = ['pan_start', 'pan_end'];
-      final pos = handlePointerDevicePos(
-        kPointerEventKindTouch,
-        x,
-        y,
-        isMoveTypes.contains(type),
-        type,
-      );
-      if (pos == null) {
-        return;
-      }
-      evtValue = {
-        'x': pos.x,
-        'y': pos.y,
-      };
-    }
-
-    final evt = PointerEventToRust(kind, type, evtValue).toJson();
-    bind.sessionSendPointer(
-        sessionId: sessionId, msg: json.encode(modify(evt)));
-  }
-
-  bool _checkPeerControlProtected(double x, double y) {
+  void handleMouse(
+    Map<String, dynamic> evt, {
+    bool onExit = false,
+  }) {
+    double x = evt['x'];
+    double y = max(0.0, evt['y']);
     final cursorModel = parent.target!.cursorModel;
+
     if (cursorModel.isPeerControlProtected) {
       lastMousePos = ui.Offset(x, y);
-      return true;
+      return;
     }
 
     if (!cursorModel.gotMouseControl) {
@@ -625,23 +571,10 @@ class InputModel {
         cursorModel.gotMouseControl = true;
       } else {
         lastMousePos = ui.Offset(x, y);
-        return true;
+        return;
       }
     }
     lastMousePos = ui.Offset(x, y);
-    return false;
-  }
-
-  void handleMouse(
-    Map<String, dynamic> evt,
-    Offset offset, {
-    bool onExit = false,
-  }) {
-    double x = offset.dx;
-    double y = max(0.0, offset.dy);
-    if (_checkPeerControlProtected(x, y)) {
-      return;
-    }
 
     var type = '';
     var isMove = false;
@@ -659,58 +592,17 @@ class InputModel {
         return;
     }
     evt['type'] = type;
-
-    final pos = handlePointerDevicePos(
-      kPointerEventKindMouse,
-      x,
-      y,
-      isMove,
-      type,
-      onExit: onExit,
-      buttons: evt['buttons'],
-    );
-    if (pos == null) {
-      return;
-    }
-    if (type != '') {
-      evt['x'] = '0';
-      evt['y'] = '0';
-    } else {
-      evt['x'] = '${pos.x}';
-      evt['y'] = '${pos.y}';
-    }
-
-    Map<int, String> mapButtons = {
-      kPrimaryMouseButton: 'left',
-      kSecondaryMouseButton: 'right',
-      kMiddleMouseButton: 'wheel',
-      kBackMouseButton: 'back',
-      kForwardMouseButton: 'forward'
-    };
-    evt['buttons'] = mapButtons[evt['buttons']] ?? '';
-    bind.sessionSendMouse(sessionId: sessionId, msg: json.encode(modify(evt)));
-  }
-
-  Point? handlePointerDevicePos(
-    String kind,
-    double x,
-    double y,
-    bool isMove,
-    String evtType, {
-    bool onExit = false,
-    int buttons = kPrimaryMouseButton,
-  }) {
     y -= CanvasModel.topToEdge;
     x -= CanvasModel.leftToEdge;
     final canvasModel = parent.target!.canvasModel;
+    final nearThr = 3;
+    var nearRight = (canvasModel.size.width - x) < nearThr;
+    var nearBottom = (canvasModel.size.height - y) < nearThr;
+
     final ffiModel = parent.target!.ffiModel;
     if (isMove) {
       canvasModel.moveDesktopMouse(x, y);
     }
-
-    final nearThr = 3;
-    var nearRight = (canvasModel.size.width - x) < nearThr;
-    var nearBottom = (canvasModel.size.height - y) < nearThr;
     final d = ffiModel.display;
     final imageWidth = d.width * canvasModel.scale;
     final imageHeight = d.height * canvasModel.scale;
@@ -758,7 +650,7 @@ class InputModel {
     } catch (e) {
       debugPrintStack(
           label: 'canvasModel.scale value ${canvasModel.scale}, $e');
-      return null;
+      return;
     }
 
     int minX = d.x.toInt();
@@ -767,16 +659,40 @@ class InputModel {
     int maxY = (d.y + d.height).toInt() - 1;
     evtX = trySetNearestRange(evtX, minX, maxX, 5);
     evtY = trySetNearestRange(evtY, minY, maxY, 5);
-    if (kind == kPointerEventKindMouse) {
-      if (evtX < minX || evtY < minY || evtX > maxX || evtY > maxY) {
-        // If left mouse up, no early return.
-        if (!(buttons == kPrimaryMouseButton && evtType == 'up')) {
-          return null;
-        }
+    if (evtX < minX || evtY < minY || evtX > maxX || evtY > maxY) {
+      // If left mouse up, no early return.
+      if (evt['buttons'] != kPrimaryMouseButton || type != 'up') {
+        return;
       }
     }
 
-    return Point(evtX, evtY);
+    if (type != '') {
+      evtX = 0;
+      evtY = 0;
+    }
+
+    evt['x'] = '$evtX';
+    evt['y'] = '$evtY';
+    var buttons = '';
+    switch (evt['buttons']) {
+      case kPrimaryMouseButton:
+        buttons = 'left';
+        break;
+      case kSecondaryMouseButton:
+        buttons = 'right';
+        break;
+      case kMiddleMouseButton:
+        buttons = 'wheel';
+        break;
+      case kBackMouseButton:
+        buttons = 'back';
+        break;
+      case kForwardMouseButton:
+        buttons = 'forward';
+        break;
+    }
+    evt['buttons'] = buttons;
+    bind.sessionSendMouse(sessionId: sessionId, msg: json.encode(evt));
   }
 
   /// Web only

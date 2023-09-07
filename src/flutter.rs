@@ -36,11 +36,9 @@ pub(crate) const APP_TYPE_CM: &str = "cm";
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub(crate) const APP_TYPE_CM: &str = "main";
 
-// Do not remove the following constants.
-// Uncomment them when they are used.
-// pub(crate) const APP_TYPE_DESKTOP_REMOTE: &str = "remote";
-// pub(crate) const APP_TYPE_DESKTOP_FILE_TRANSFER: &str = "file transfer";
-// pub(crate) const APP_TYPE_DESKTOP_PORT_FORWARD: &str = "port forward";
+pub(crate) const APP_TYPE_DESKTOP_REMOTE: &str = "remote";
+pub(crate) const APP_TYPE_DESKTOP_FILE_TRANSFER: &str = "file transfer";
+pub(crate) const APP_TYPE_DESKTOP_PORT_FORWARD: &str = "port forward";
 
 lazy_static::lazy_static! {
     pub(crate) static ref CUR_SESSION_ID: RwLock<SessionID> = Default::default();
@@ -1037,24 +1035,24 @@ fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
 }
 
 fn char_to_session_id(c: *const char) -> ResultType<SessionID> {
-    if c.is_null() {
-        bail!("Session id ptr is null");
-    }
     let cstr = unsafe { std::ffi::CStr::from_ptr(c as _) };
     let str = cstr.to_str()?;
     SessionID::from_str(str).map_err(|e| anyhow!("{:?}", e))
 }
 
-pub fn session_get_rgba_size(_session_id: SessionID) -> usize {
+#[no_mangle]
+pub fn session_get_rgba_size(_session_uuid_str: *const char) -> usize {
     #[cfg(not(feature = "flutter_texture_render"))]
-    if let Some(session) = SESSIONS.read().unwrap().get(&_session_id) {
-        return session.rgba.read().unwrap().len();
+    if let Ok(session_id) = char_to_session_id(_session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
+            return session.rgba.read().unwrap().len();
+        }
     }
     0
 }
 
 #[no_mangle]
-pub extern "C" fn session_get_rgba(session_uuid_str: *const char) -> *const u8 {
+pub fn session_get_rgba(session_uuid_str: *const char) -> *const u8 {
     if let Ok(session_id) = char_to_session_id(session_uuid_str) {
         if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
             return session.get_rgba();
@@ -1064,17 +1062,23 @@ pub extern "C" fn session_get_rgba(session_uuid_str: *const char) -> *const u8 {
     std::ptr::null()
 }
 
-pub fn session_next_rgba(session_id: SessionID) {
-    if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
-        return session.next_rgba();
+#[no_mangle]
+pub fn session_next_rgba(session_uuid_str: *const char) {
+    if let Ok(session_id) = char_to_session_id(session_uuid_str) {
+        if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
+            return session.next_rgba();
+        }
     }
 }
 
 #[inline]
-pub fn session_register_texture(_session_id: SessionID, _ptr: usize) {
+#[no_mangle]
+pub fn session_register_texture(_session_uuid_str: *const char, _ptr: usize) {
     #[cfg(feature = "flutter_texture_render")]
-    if let Some(session) = SESSIONS.write().unwrap().get_mut(&_session_id) {
-        return session.register_texture(_ptr);
+    if let Ok(session_id) = char_to_session_id(_session_uuid_str) {
+        if let Some(session) = SESSIONS.write().unwrap().get_mut(&session_id) {
+            return session.register_texture(_ptr);
+        }
     }
 }
 
@@ -1126,84 +1130,8 @@ pub fn stop_global_event_stream(app_type: String) {
     let _ = GLOBAL_EVENT_STREAM.write().unwrap().remove(&app_type);
 }
 
-#[inline]
-fn session_send_touch_scale(
-    session_id: SessionID,
-    v: &serde_json::Value,
-    alt: bool,
-    ctrl: bool,
-    shift: bool,
-    command: bool,
-) {
-    match v.get("v").and_then(|s| s.as_i64()) {
-        Some(scale) => {
-            if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
-                session.send_touch_scale(scale as _, alt, ctrl, shift, command);
-            }
-        }
-        None => {}
-    }
-}
-
-#[inline]
-fn session_send_touch_pan(
-    session_id: SessionID,
-    v: &serde_json::Value,
-    pan_event: &str,
-    alt: bool,
-    ctrl: bool,
-    shift: bool,
-    command: bool,
-) {
-    match v.get("v") {
-        Some(v) => match (
-            v.get("x").and_then(|x| x.as_i64()),
-            v.get("y").and_then(|y| y.as_i64()),
-        ) {
-            (Some(x), Some(y)) => {
-                if let Some(session) = SESSIONS.read().unwrap().get(&session_id) {
-                    session
-                        .send_touch_pan_event(pan_event, x as _, y as _, alt, ctrl, shift, command);
-                }
-            }
-            _ => {}
-        },
-        _ => {}
-    }
-}
-
-fn session_send_touch_event(
-    session_id: SessionID,
-    v: &serde_json::Value,
-    alt: bool,
-    ctrl: bool,
-    shift: bool,
-    command: bool,
-) {
-    match v.get("t").and_then(|t| t.as_str()) {
-        Some("scale") => session_send_touch_scale(session_id, v, alt, ctrl, shift, command),
-        Some(pan_event) => {
-            session_send_touch_pan(session_id, v, pan_event, alt, ctrl, shift, command)
-        }
-        _ => {}
-    }
-}
-
-pub fn session_send_pointer(session_id: SessionID, msg: String) {
-    if let Ok(m) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&msg) {
-        let alt = m.get("alt").is_some();
-        let ctrl = m.get("ctrl").is_some();
-        let shift = m.get("shift").is_some();
-        let command = m.get("command").is_some();
-        match (m.get("k"), m.get("v")) {
-            (Some(k), Some(v)) => match k.as_str() {
-                Some("touch") => session_send_touch_event(session_id, v, alt, ctrl, shift, command),
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-}
+#[no_mangle]
+unsafe extern "C" fn get_rgba() {}
 
 /// Hooks for session.
 #[derive(Clone)]

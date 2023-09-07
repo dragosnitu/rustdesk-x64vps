@@ -28,7 +28,6 @@ class AbModel {
   final pullError = "".obs;
   final pushError = "".obs;
   final tags = [].obs;
-  final RxMap<String, int> tagColors = Map<String, int>.fromEntries([]).obs;
   final peers = List<Peer>.empty(growable: true).obs;
   final sortTags = shouldSortTags().obs;
   final retrying = false.obs;
@@ -81,11 +80,10 @@ class AbModel {
       if (resp.body.toLowerCase() == "null") {
         // normal reply, emtpy ab return null
         tags.clear();
-        tagColors.clear();
         peers.clear();
       } else if (resp.body.isNotEmpty) {
         Map<String, dynamic> json =
-            _jsonDecodeResp(utf8.decode(resp.bodyBytes), resp.statusCode);
+            _jsonDecode(utf8.decode(resp.bodyBytes), resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         } else if (json.containsKey('data')) {
@@ -95,7 +93,26 @@ class AbModel {
           } catch (e) {}
           final data = jsonDecode(json['data']);
           if (data != null) {
-            _deserialize(data);
+            final oldOnlineIDs =
+                peers.where((e) => e.online).map((e) => e.id).toList();
+            tags.clear();
+            peers.clear();
+            if (data['tags'] is List) {
+              tags.value = data['tags'];
+            }
+            if (data['peers'] is List) {
+              for (final peer in data['peers']) {
+                peers.add(Peer.fromJson(peer));
+              }
+            }
+            if (isFull(false)) {
+              peers.removeRange(licensedDevices, peers.length);
+            }
+            // restore online
+            peers
+                .where((e) => oldOnlineIDs.contains(e.id))
+                .map((e) => e.online = true)
+                .toList();
             _saveCache(); // save on success
           }
         }
@@ -225,7 +242,10 @@ class AbModel {
       final api = "${await bind.mainGetApiServer()}/api/ab";
       var authHeaders = getHttpHeaders();
       authHeaders['Content-Type'] = "application/json";
-      final body = jsonEncode({"data": jsonEncode(_serialize())});
+      final peersJsonData = peers.map((e) => e.toAbUploadJson()).toList();
+      final body = jsonEncode({
+        "data": jsonEncode({"tags": tags, "peers": peersJsonData})
+      });
       http.Response resp;
       // support compression
       if (licensedDevices > 0 && body.length > 1024) {
@@ -241,7 +261,7 @@ class AbModel {
         ret = true;
         _saveCache();
       } else {
-        Map<String, dynamic> json = _jsonDecodeResp(resp.body, resp.statusCode);
+        Map<String, dynamic> json = _jsonDecode(resp.body, resp.statusCode);
         if (json.containsKey('error')) {
           throw json['error'];
         } else if (resp.statusCode == 200) {
@@ -298,7 +318,6 @@ class AbModel {
   void deleteTag(String tag) {
     gFFI.abModel.selectedTags.remove(tag);
     tags.removeWhere((element) => element == tag);
-    tagColors.remove(tag);
     for (var peer in peers) {
       if (peer.tags.isEmpty) {
         continue;
@@ -334,11 +353,6 @@ class AbModel {
         }
       }).toList();
     }
-    int? oldColor = tagColors[oldTag];
-    if (oldColor != null) {
-      tagColors.remove(oldTag);
-      tagColors.addAll({newTag: oldColor});
-    }
   }
 
   void unsetSelectedTags() {
@@ -351,20 +365,6 @@ class AbModel {
       return [];
     } else {
       return it.first.tags;
-    }
-  }
-
-  Color getTagColor(String tag) {
-    int? colorValue = tagColors[tag];
-    if (colorValue != null) {
-      return Color(colorValue);
-    }
-    return str2color2(tag, existing: tagColors.values.toList());
-  }
-
-  setTagColor(String tag, Color color) {
-    if (tags.contains(tag)) {
-      tagColors[tag] = color.value;
     }
   }
 
@@ -467,10 +467,12 @@ class AbModel {
 
   _saveCache() {
     try {
-      var m = _serialize();
-      m.addAll(<String, dynamic>{
+      final peersJsonData = peers.map((e) => e.toAbUploadJson()).toList();
+      final m = <String, dynamic>{
         "access_token": bind.mainGetLocalOption(key: 'access_token'),
-      });
+        "peers": peersJsonData,
+        "tags": tags.map((e) => e.toString()).toList(),
+      };
       bind.mainSaveAb(json: jsonEncode(m));
     } catch (e) {
       debugPrint('ab save:$e');
@@ -486,13 +488,22 @@ class AbModel {
       final cache = await bind.mainLoadAb();
       final data = jsonDecode(cache);
       if (data == null || data['access_token'] != access_token) return;
-      _deserialize(data);
+      tags.clear();
+      peers.clear();
+      if (data['tags'] is List) {
+        tags.value = data['tags'];
+      }
+      if (data['peers'] is List) {
+        for (final peer in data['peers']) {
+          peers.add(Peer.fromJson(peer));
+        }
+      }
     } catch (e) {
       debugPrint("load ab cache: $e");
     }
   }
 
-  Map<String, dynamic> _jsonDecodeResp(String body, int statusCode) {
+  Map<String, dynamic> _jsonDecode(String body, int statusCode) {
     try {
       Map<String, dynamic> json = jsonDecode(body);
       return json;
@@ -502,50 +513,6 @@ class AbModel {
         throw 'HTTP $statusCode, $err';
       }
       throw err;
-    }
-  }
-
-  Map<String, dynamic> _serialize() {
-    final peersJsonData = peers.map((e) => e.toAbUploadJson()).toList();
-    final tagColorJsonData = jsonEncode(tagColors);
-    return {
-      "tags": tags,
-      "peers": peersJsonData,
-      "tag_colors": tagColorJsonData
-    };
-  }
-
-  _deserialize(dynamic data) {
-    if (data == null) return;
-    final oldOnlineIDs = peers.where((e) => e.online).map((e) => e.id).toList();
-    tags.clear();
-    tagColors.clear();
-    peers.clear();
-    if (data['tags'] is List) {
-      tags.value = data['tags'];
-    }
-    if (data['peers'] is List) {
-      for (final peer in data['peers']) {
-        peers.add(Peer.fromJson(peer));
-      }
-    }
-    if (isFull(false)) {
-      peers.removeRange(licensedDevices, peers.length);
-    }
-    // restore online
-    peers
-        .where((e) => oldOnlineIDs.contains(e.id))
-        .map((e) => e.online = true)
-        .toList();
-    if (data['tag_colors'] is String) {
-      Map<String, dynamic> map = jsonDecode(data['tag_colors']);
-      tagColors.value = Map<String, int>.from(map);
-    }
-    // add color to tag
-    final tagsWithoutColor =
-        tags.toList().where((e) => !tagColors.containsKey(e)).toList();
-    for (var t in tagsWithoutColor) {
-      tagColors[t] = str2color2(t, existing: tagColors.values.toList()).value;
     }
   }
 

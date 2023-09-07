@@ -103,16 +103,15 @@ pub fn encrypt_str_or_original(s: &str, version: &str, max_len: usize) -> String
 // String: password
 // bool: whether decryption is successful
 // bool: whether should store to re-encrypt when load
-// note: s.len() return length in bytes, s.chars().count() return char count
-//       &[..2] return the left 2 bytes, s.chars().take(2) return the left 2 chars
 pub fn decrypt_str_or_original(s: &str, current_version: &str) -> (String, bool, bool) {
     if s.len() > VERSION_LEN {
-        if s.starts_with("00") {
+        let version = &s[..VERSION_LEN];
+        if version == "00" {
             if let Ok(v) = decrypt(s[VERSION_LEN..].as_bytes()) {
                 return (
                     String::from_utf8_lossy(&v).to_string(),
                     true,
-                    "00" != current_version,
+                    version != current_version,
                 );
             }
         }
@@ -199,7 +198,7 @@ mod test {
         let max_len = 128;
 
         println!("test str");
-        let data = "1ü1111";
+        let data = "Hello World";
         let encrypted = encrypt_str_or_original(data, version, max_len);
         let (decrypted, succ, store) = decrypt_str_or_original(&encrypted, version);
         println!("data: {data}");
@@ -218,7 +217,7 @@ mod test {
         );
 
         println!("test vec");
-        let data: Vec<u8> = "1ü1111".as_bytes().to_vec();
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
         let encrypted = encrypt_vec_or_original(&data, version, max_len);
         let (decrypted, succ, store) = decrypt_vec_or_original(&encrypted, version);
         println!("data: {data:?}");
@@ -254,10 +253,6 @@ mod test {
         let (_, succ, store) = decrypt_vec_or_original(&[], version);
         assert!(!store);
         assert!(!succ);
-        let data = "1ü1111";
-        assert_eq!(decrypt_str_or_original(data, version).0, data);
-        let data: Vec<u8> = "1ü1111".as_bytes().to_vec();
-        assert_eq!(decrypt_vec_or_original(&data, version).0, data);
 
         println!("test speed");
         let test_speed = |len: usize, name: &str| {

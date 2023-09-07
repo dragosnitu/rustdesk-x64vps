@@ -14,7 +14,6 @@ import './dialog.dart';
 
 const kOpSvgList = [
   'github',
-  'gitlab',
   'google',
   'apple',
   'okta',
@@ -73,11 +72,6 @@ class ButtonOP extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final opLabel = {
-          'github': 'GitHub',
-          'gitlab': 'GitLab'
-        }[op.toLowerCase()] ??
-        toCapitalized(op);
     return Row(children: [
       Container(
         height: height,
@@ -103,7 +97,8 @@ class ButtonOP extends StatelessWidget {
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Center(
-                        child: Text('${translate("Continue with")} $opLabel')),
+                        child: Text(
+                            '${translate("Continue with")} ${op.toLowerCase() == "github" ? "GitHub" : toCapitalized(op)}')),
                   ),
                 ),
               ],

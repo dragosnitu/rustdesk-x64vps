@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:texture_rgba_renderer/texture_rgba_renderer.dart';
 
@@ -20,6 +21,7 @@ class RenderTexture {
       _sessionId = sessionId;
 
       textureRenderer.createTexture(_textureKey).then((id) async {
+        debugPrint("id: $id, texture_key: $_textureKey");
         if (id != -1) {
           final ptr = await textureRenderer.getTexturePtr(_textureKey);
           platformFFI.registerTexture(sessionId, ptr);
